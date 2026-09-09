@@ -10,8 +10,7 @@ on:
 jobs:
   build-and-profile:
     name: ${{ matrix.name }} (${{ matrix.os }} / ${{ matrix.arch }})
-    # windows-11-arm is in limited preview; fallback to windows-latest for scheduling
-    runs-on: ${{ matrix.os == 'windows-11-arm' && 'windows-latest' || matrix.os }}
+    runs-on: ${{ matrix.runner || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +35,7 @@ jobs:
 
           - name: "Windows ARM64 — Snapdragon NPU"
             os: windows-11-arm
+            runner: windows-latest
             arch: arm64
             cc: cl
             cxx: cl
