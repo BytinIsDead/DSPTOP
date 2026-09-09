@@ -13,6 +13,7 @@
 #ifdef __has_include
 #if __has_include(<IOKit/IOKitLib.h>)
 #include <IOKit/IOKitLib.h>
+#include <CoreFoundation/CoreFoundation.h>
 #define HAS_IOKIT 1
 #endif
 #endif

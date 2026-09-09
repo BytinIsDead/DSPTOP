@@ -39,9 +39,13 @@ public:
     AcceleratorType Type() const override { return detected_type_; }
     bool IsAvailable() const override {
 #if defined(__aarch64__)
-        return !sysfs_nodes_.empty() || fs::exists("/sys/kernel/debug/remoteproc");
+        try {
+            if (!sysfs_nodes_.empty()) return true;
+            if (fs::exists("/sys/kernel/debug/remoteproc")) return true;
+            if (fs::exists("/sys/class/remoteproc")) return true;
+        } catch (...) {}
+        return !sysfs_nodes_.empty();
 #else
-        // On x64 Linux (rare for DSP), still probe but usually mock fallback wins
         return !sysfs_nodes_.empty();
 #endif
     }
@@ -110,18 +114,23 @@ private:
                 }
             }
         }
-        // Also glob remoteproc*
-        for (auto& entry : fs::directory_iterator("/sys/class/remoteproc", fs::directory_options::skip_permission_denied)) {
-            // no-op, existence already checked
-            (void)entry;
-        }
-        // Fallback: scan /sys/class/npu
-        if (fs::exists("/sys/class/npu")) {
-            for (auto& e : fs::directory_iterator("/sys/class/npu")) {
-                auto p = e.path() / "load";
-                if (fs::exists(p)) sysfs_nodes_.push_back(p.string());
+        // Also glob remoteproc* - wrapped in try/catch for permission denied on debugfs
+        try {
+            if (fs::exists("/sys/class/remoteproc")) {
+                for (auto& entry : fs::directory_iterator("/sys/class/remoteproc", fs::directory_options::skip_permission_denied)) {
+                    (void)entry;
+                }
             }
-        }
+        } catch (const fs::filesystem_error&) {}
+        // Fallback: scan /sys/class/npu
+        try {
+            if (fs::exists("/sys/class/npu")) {
+                for (auto& e : fs::directory_iterator("/sys/class/npu", fs::directory_options::skip_permission_denied)) {
+                    auto p = e.path() / "load";
+                    if (fs::exists(p)) sysfs_nodes_.push_back(p.string());
+                }
+            }
+        } catch (const fs::filesystem_error&) {}
     }
 
     double ReadUtilization() {

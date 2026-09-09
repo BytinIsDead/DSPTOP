@@ -183,7 +183,7 @@ jobs:
       - name: Fail if thermal throttling exceeds 20%
         shell: bash
         run: |
-          THROTTLE=$(python3 -c "import json,pathlib; d=json.loads(pathlib.Path('profile.json').read_text()); print(d.get('summary',{}).get('max_throttle', max((dev.get('thermal_throttle_pct',0) for s in d.get('samples',[d]) for dev in s.get('devices',[])), default=0))")
+          THROTTLE=$(python3 -c "import json,pathlib; d=json.loads(pathlib.Path('profile.json').read_text()); print(d.get('summary',{}).get('max_throttle', max((dev.get('thermal_throttle_pct',0) for s in d.get('samples',[d]) for dev in s.get('devices',[])), default=0)))")
           echo "Max thermal throttle: $THROTTLE%"
           python3 -c "import sys; t=float(sys.argv[1]); sys.exit(1 if t>20 else 0)" "$THROTTLE" || {
             echo "::error::Thermal throttling $THROTTLE% exceeds 20% threshold - failing build"
