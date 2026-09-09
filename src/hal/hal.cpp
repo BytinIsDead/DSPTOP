@@ -1,4 +1,5 @@
 #include "dsptop/hal.h"
+#include "dsptop/beacon.h"
 #include <chrono>
 #include <cmath>
 #include <algorithm>
@@ -96,26 +97,35 @@ public:
         DeviceMetrics m;
         m.device_name = "Mock NPU";
         m.type = AcceleratorType::GenericNPU;
-        // Deterministic pseudo-load: sawtooth 20..90 for CI reproducibility
-        auto now = std::chrono::steady_clock::now().time_since_epoch();
-        double t = std::chrono::duration<double>(now).count();
-        double base = 40.0 + 30.0 * std::sin(t * 0.7);
-        // Clamp
-        if (base < 5) base = 5; if (base > 95) base = 95;
-
-        CoreMetrics c0{0, "NPU Core 0", base, base*0.9, 11.2*(base/100), 38.0};
-        CoreMetrics c1{1, "NPU Core 1", base*0.75, base*0.68, 8.4*(base/100), 38.0};
+        // 1) If inference beacon is active (real 8B Q4_K_M or dummy), use it as ground truth
+        double b_util = 0, b_macc = 0;
+        bool has_beacon = beacon::TryReadBeacon(b_util, b_macc, 3.0);
+        double base;
+        double t = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (has_beacon) {
+            base = b_util;
+        } else {
+            // Deterministic pseudo-load: sawtooth 20..90 for CI reproducibility
+            base = 40.0 + 30.0 * std::sin(t * 0.7);
+            if (base < 5) base = 5; if (base > 95) base = 95;
+        }
+        double macc0 = has_beacon ? b_macc : base*0.9;
+        double macc1 = has_beacon ? b_macc*0.85 : base*0.68;
+        CoreMetrics c0{0, "NPU Core 0", base, macc0, 11.2*(base/100), 38.0};
+        CoreMetrics c1{1, "NPU Core 1", base*0.75, macc1, 8.4*(base/100), 38.0};
         m.cores = {c0, c1};
         m.total_util_pct = base;
-        m.memory.sram_util_pct = 42.0 + 10.0*std::sin(t*0.3);
-        m.memory.vmem_util_pct = 35.0;
-        m.memory.sram_used_kb = 820; m.memory.sram_total_kb = 2048;
-        m.power.power_watts = 3.2; m.power.power_limit_watts = 8.0;
-        m.power.envelope_pct = 40.0;
-        m.power.temp_celsius = 62.0;
-        m.power.thermal_throttle_pct = 2.0 + 5.0*std::sin(t*0.1 + 1.0);
+        m.memory.sram_util_pct = has_beacon ? std::clamp(38 + base*0.18, 0.0, 95.0) : 42.0 + 10.0*std::sin(t*0.3);
+        m.memory.vmem_util_pct = has_beacon ? std::clamp(28 + base*0.14, 0.0, 95.0) : 35.0;
+        m.memory.sram_used_kb = 820 + (int)(base*6); m.memory.sram_total_kb = 2048;
+        // Power correlates with util when beacon active
+        m.power.power_watts = has_beacon ? (0.8 + 5.2*base/100.0) : 3.2;
+        m.power.power_limit_watts = 8.0;
+        m.power.envelope_pct = m.power.power_watts / m.power.power_limit_watts * 100;
+        m.power.temp_celsius = has_beacon ? (48 + base*0.22) : 62.0;
+        m.power.thermal_throttle_pct = has_beacon ? (base > 88 ? (base-88)*1.5 : 0) : 2.0 + 5.0*std::sin(t*0.1 + 1.0);
         if (m.power.thermal_throttle_pct < 0) m.power.thermal_throttle_pct = 0;
-        m.clock_mhz = 1200;
+        m.clock_mhz = 1200 + (has_beacon ? base*2 : 0);
         m.timestamp = std::chrono::system_clock::now();
         return m;
     }

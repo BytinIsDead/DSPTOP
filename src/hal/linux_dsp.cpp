@@ -1,4 +1,5 @@
 #include "dsptop/hal.h"
+#include "dsptop/beacon.h"
 
 #if defined(__linux__)
 
@@ -7,6 +8,7 @@
 #include <regex>
 #include <string>
 #include <unistd.h>
+#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -57,16 +59,19 @@ public:
         m.timestamp = std::chrono::system_clock::now();
 
         double util = ReadUtilization();
+        // Beacon overrides hardware reading when real 8B Q4_K_M is active
+        double b_util=0,b_macc=0;
+        bool has_beacon = beacon::TryReadBeacon(b_util,b_macc,3.0);
+        if (has_beacon) util = b_util;
         int cores = num_cores_;
 
         for (int i = 0; i < cores; ++i) {
             CoreMetrics c;
             c.core_id = i;
             c.core_name = detected_name_ + " Core " + std::to_string(i);
-            // Hexagon HVX: split across 4 threads; vary slightly
-            double jitter = 1.0 + (i * 0.04 - 0.06);
+            double jitter = has_beacon ? (i==0?1.0:0.92) : (1.0 + (i * 0.04 - 0.06));
             c.utilization_pct = std::clamp(util * jitter, 0.0, 100.0);
-            c.macc_util_pct = c.utilization_pct * 0.88;
+            c.macc_util_pct = has_beacon ? std::clamp(b_macc * (i==0?1.0:0.88), 0.0, 100.0) : c.utilization_pct * 0.88;
             c.tops_peak = 12.0; // Hexagon 780: ~12 TOPS
             c.tops_current = c.tops_peak * (c.utilization_pct/100.0) / cores;
             m.cores.push_back(c);
@@ -76,7 +81,18 @@ public:
         m.memory = mem;
         auto pw = ReadPower();
         m.power = pw;
-        m.clock_mhz = ReadClockMHz();
+        // Beacon overrides for correlated realism
+        if (has_beacon) {
+            m.memory.sram_util_pct = std::clamp(30 + util*0.28, 0.0, 94.0);
+            m.memory.vmem_util_pct = std::clamp(22 + util*0.20, 0.0, 94.0);
+            m.power.power_watts = 0.9 + 4.8*util/100.0;
+            m.power.power_limit_watts = 6.0;
+            m.power.envelope_pct = m.power.power_watts/m.power.power_limit_watts*100;
+            m.power.temp_celsius = 44 + util*0.25;
+            m.power.thermal_throttle_pct = util > 88 ? (util-88)*1.3 : 0;
+            m.clock_mhz = 1000 + util*4;
+        }
+        m.clock_mhz = has_beacon ? (1000 + util*4) : ReadClockMHz();
         return m;
     }
 

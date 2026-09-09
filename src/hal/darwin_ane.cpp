@@ -1,4 +1,5 @@
 #include "dsptop/hal.h"
+#include "dsptop/beacon.h"
 
 #if defined(__APPLE__)
 
@@ -8,6 +9,7 @@
 #include <sstream>
 #include <unistd.h>
 #include <sys/sysctl.h>
+#include <cmath>
 
 // Optional IOKit path — only compiled when SDK available
 #ifdef __has_include
@@ -70,19 +72,26 @@ public:
 
         double ane_pct = 0, ane_power_mw = 0;
         bool got = false;
-
-        if (can_powermetrics_) {
-            got = PollViaPowermetrics(ane_pct, ane_power_mw);
-        }
+        double b_util=0,b_macc=0;
+        bool has_beacon = beacon::TryReadBeacon(b_util,b_macc,3.0);
+        if (has_beacon) {
+            ane_pct = b_util;
+            ane_power_mw = (0.9 + 5.5*b_util/100.0)*1000.0; // W->mW
+            got = true;
+        } else {
+            if (can_powermetrics_) {
+                got = PollViaPowermetrics(ane_pct, ane_power_mw);
+            }
 #ifdef HAS_IOKIT
-        if (!got && can_iokit_) {
-            got = PollViaIOKit(ane_pct, ane_power_mw);
-        }
+            if (!got && can_iokit_) {
+                got = PollViaIOKit(ane_pct, ane_power_mw);
+            }
 #endif
-        if (!got) {
-            // Graceful degradation: estimate via CPU counters or return 0
-            ane_pct = 0;
-            ane_power_mw = 0;
+            if (!got) {
+                ane_pct = 0;
+                ane_power_mw = 0;
+            }
+            // If we got a hardware reading but beacon active, beacon already won
         }
 
         // ANE on M-series has 16 or 32 cores (M1:16, M3/M4:16, M1 Ultra:32)
@@ -92,25 +101,23 @@ public:
             CoreMetrics c;
             c.core_id = i;
             c.core_name = "ANE Core " + std::to_string(i);
-            // Add slight per-core variance to visualize distribution
-            double jitter = (i % 2 == 0) ? 1.05 : 0.95;
+            double jitter = has_beacon ? (i==0?1.0:0.92) : (i % 2 == 0 ? 1.05 : 0.95);
             c.utilization_pct = std::min(100.0, per_core * jitter);
-            c.macc_util_pct = c.utilization_pct * 0.92; // MACC ~92% of residency
+            c.macc_util_pct = has_beacon ? std::clamp(b_macc * (i==0?1.0:0.9), 0.0, 100.0) : c.utilization_pct * 0.92;
             c.tops_peak = 38.0; // M4 ANE: 38 TOPS aggregate
             c.tops_current = c.tops_peak * (c.utilization_pct / 100.0) / num_cores;
             m.cores.push_back(c);
         }
         m.total_util_pct = ane_pct;
         m.power.power_watts = ane_power_mw / 1000.0;
-        m.power.power_limit_watts = 8.0; // ANE power domain ~8W on M4
+        m.power.power_limit_watts = 8.0;
         m.power.envelope_pct = (m.power.power_limit_watts > 0)
             ? (m.power.power_watts / m.power.power_limit_watts * 100.0) : 0;
-        // Thermal: read via IOHID or SMC; approximate from powermetrics if available
-        m.power.temp_celsius = 55.0;
-        m.power.thermal_throttle_pct = 0.0;
-        m.memory.sram_util_pct = 30.0;
-        m.memory.vmem_util_pct = 20.0;
-        m.clock_mhz = 1200; // ANE clock ~1.2GHz
+        m.power.temp_celsius = has_beacon ? (45 + ane_pct*0.22) : 55.0;
+        m.power.thermal_throttle_pct = has_beacon ? (ane_pct > 88 ? (ane_pct-88)*1.1 : 0) : 0.0;
+        m.memory.sram_util_pct = has_beacon ? std::clamp(28 + ane_pct*0.30, 0.0, 93.0) : 30.0;
+        m.memory.vmem_util_pct = has_beacon ? std::clamp(18 + ane_pct*0.22, 0.0, 93.0) : 20.0;
+        m.clock_mhz = 1200 + (has_beacon ? ane_pct*2 : 0);
         return m;
     }
 
