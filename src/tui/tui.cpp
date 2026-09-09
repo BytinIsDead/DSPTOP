@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <algorithm>
+#include <cmath>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -77,9 +78,9 @@ bool Terminal::Init() {
     is_tty_ = isatty(STDOUT_FILENO);
     if (!is_tty_) return false;
     // Save termios
-    orig_termios_ = new termios;
+    orig_termios_ = new ::termios;
     tcgetattr(STDIN_FILENO, orig_termios_);
-    termios raw = *orig_termios_;
+    ::termios raw = *orig_termios_;
     raw.c_lflag &= ~(ECHO | ICANON);
     tcsetattr(STDIN_FILENO, TCSANOW, &raw);
     // Alt buffer + hide cursor
