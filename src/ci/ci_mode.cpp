@@ -7,6 +7,8 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <cmath>
+#include <algorithm>
 
 namespace dsptop {
 namespace ci {
@@ -98,8 +100,7 @@ std::string SnapshotHistoryToHtml(const std::vector<SystemSnapshot>& history) {
         if (history.size() > 1 && dur > 0) interval_sec = dur / (history.size()-1);
     }
     // Collect devices from first sample (assume stable)
-    const auto& first_devices = history.front().devices;
-    size_t ndev = first_devices.size();
+    // size_t ndev = history.front().devices.size(); // (unused, kept for docs)
     // Summary stats
     double max_util=0, avg_util=0, max_throttle=0, max_power=0, avg_power=0;
     size_t count=0;
