@@ -104,9 +104,11 @@ jobs:
             if [ -f "$p" ]; then BIN="$p"; break; fi
           done
           echo "Using binary: $BIN"
-          "$BIN" --ci --duration 30s --output profile.json
+          "$BIN" --ci --duration 30s --output profile.json --html profile.html
           cat profile.json
-          ls -lh profile.json
+          ls -lh profile.json profile.html
+          echo "--- HTML head ---"
+          head -n 50 profile.html || cat profile.html | head -n 50
 
       - name: Wait for dummy inference to finish
         shell: bash
@@ -179,6 +181,9 @@ jobs:
         run: |
           python3 -m json.tool profile.json > /dev/null && echo "JSON valid"
           cat profile.json | head -n 80
+          test -f profile.html && echo "HTML exists: $(wc -c < profile.html) bytes" && head -n 20 profile.html
+          # also valid html check - at least contains Chart.js
+          grep -q "chart.umd" profile.html && echo "HTML Chart.js OK" || (echo "::error::HTML missing Chart.js" && exit 1)
 
       - name: Fail if thermal throttling exceeds 20%
         shell: bash
@@ -195,5 +200,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: profile-${{ matrix.os }}-${{ matrix.arch }}
-          path: profile.json
+          path: |
+            profile.json
+            profile.html
           retention-days: 14

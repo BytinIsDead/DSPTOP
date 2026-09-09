@@ -16,7 +16,9 @@ Supports **Linux (ARM64), macOS (Apple Silicon), Windows (x64 + ARM64)** from a 
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./build/dsptop                 # interactive TUI
-./build/dsptop --ci --duration 30s --output profile.json   # headless CI mode
+./build/dsptop --ci --duration 30s --output profile.json   # headless CI mode (also auto-generates profile.html)
+./build/dsptop --ci --duration 30s --output profile.json --html profile.html  # explicit HTML report with Chart.js graphs
+# open profile.html in a browser — 5 interactive graphs (util, power, temp, sram, macc, tops)
 ./build/dsptop --daemon        # background daemon (Prometheus :9099/metrics)
 ```
 

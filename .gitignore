@@ -1,6 +1,7 @@
 build/
 out/
 profile.json
+profile.html
 *.o
 *.obj
 *.exe

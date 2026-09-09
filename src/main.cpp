@@ -9,9 +9,10 @@
 static void PrintHelp(const char* prog){
     std::cout << "DSPTOP — AI Accelerator Terminal Dashboard (No GPU. Ever.)\n"
               << "Usage: " << prog << " [options]\n"
-              << "  --ci                    Headless CI mode (no TUI, JSON output)\n"
+              << "  --ci                    Headless CI mode (no TUI, JSON+HTML output)\n"
               << "  --duration <time>       CI duration (e.g., 30s, 1m) [default 30s]\n"
-              << "  --output <file>         JSON output path [default profile.json]\n"
+              << "  --output <file>         JSON output path [default profile.json] (HTML auto-derived as .html)\n"
+              << "  --html <file>           HTML report path [default profile.html] (Chart.js graphs)\n"
               << "  --interval <ms>         Sample interval ms [default 500]\n"
               << "  --daemon                Run as background daemon (dsptopd)\n"
               << "  --prometheus-port <n>   Prometheus port [default 9099]\n"
@@ -50,6 +51,12 @@ int main(int argc, char** argv){
         } catch(...) { secs=30; }
         opts.duration_seconds = secs;
         opts.output_path = get("--output", get("--out","profile.json"));
+        opts.html_path = get("--html", "");
+        // If --html not given but --output is .html, swap: html is output, json derived
+        if (opts.html_path.empty() && opts.output_path.size()>=5 && opts.output_path.substr(opts.output_path.size()-5)==".html") {
+            opts.html_path = opts.output_path;
+            opts.output_path = opts.output_path.substr(0, opts.output_path.size()-5) + ".json";
+        }
         opts.sample_interval_ms = std::stoi(get("--interval","500"));
         // also support --ci --duration 30s --output profile.json as called in workflow
         return dsptop::ci::RunHeadless(opts);
