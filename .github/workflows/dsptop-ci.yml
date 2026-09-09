@@ -1,4 +1,4 @@
-name: DSPTOP CI — Multi-Platform NPU/DSP Matrix
+name: DSPTOP CI - Multi-Platform NPU/DSP Matrix
 
 on:
   push:
@@ -10,32 +10,31 @@ on:
 jobs:
   build-and-profile:
     name: ${{ matrix.name }} (${{ matrix.os }} / ${{ matrix.arch }})
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: "macOS Apple Silicon — ANE"
+          - name: "macOS Apple Silicon - ANE"
             os: macos-14
             arch: arm64
             cc: clang
             cxx: clang++
 
-          - name: "Linux ARM64 — Hexagon/DSP"
+          - name: "Linux ARM64 - Hexagon/DSP"
             os: ubuntu-24.04-arm
             arch: arm64
             cc: gcc
             cxx: g++
 
-          - name: "Windows x64 — Intel NPU"
+          - name: "Windows x64 - Intel NPU"
             os: windows-latest
             arch: x64
             cc: cl
             cxx: cl
 
-          - name: "Windows ARM64 — Snapdragon NPU"
+          - name: "Windows ARM64 - Snapdragon NPU"
             os: windows-11-arm
-            runner: windows-latest
             arch: arm64
             cc: cl
             cxx: cl
@@ -82,7 +81,7 @@ jobs:
           cmake --build build --config Release --parallel
           ls -R build || dir build /s
 
-      - name: Smoke — help
+      - name: Smoke - help
         run: |
           ./build/dsptop --help || .\build\dsptop.exe --help || ./build/Release/dsptop --help || .\build\Release\dsptop.exe --help
         shell: bash
@@ -98,7 +97,6 @@ jobs:
       - name: Run DSPTOP in headless CI mode (30s)
         shell: bash
         run: |
-          # Normalize binary path across generators
           BIN=""
           for p in ./build/dsptop ./build/Release/dsptop ./build/dsptop.exe ./build/Release/dsptop.exe; do
             if [ -f "$p" ]; then BIN="$p"; break; fi
@@ -119,16 +117,12 @@ jobs:
         run: |
           python3 << 'PY'
           import json, os, pathlib
-
           data = json.loads(pathlib.Path("profile.json").read_text())
-          # Support both single-snapshot and {samples:[...], summary:{}}
           samples = data.get("samples", [data])
           if isinstance(samples, list) and len(samples)>0 and "devices" in samples[0]:
               pass
           else:
               samples = [data]
-
-          # Aggregate stats per device
           from collections import defaultdict
           stats = defaultdict(list)
           throttle_max = 0
@@ -136,14 +130,13 @@ jobs:
               for d in s.get("devices", []):
                   stats[d.get("name","NPU")].append(d)
                   throttle_max = max(throttle_max, d.get("thermal_throttle_pct", 0))
-
           summary = data.get("summary", {})
           md = []
-          md.append(f"## DSPTOP Profile — `${{os.environ.get('MATRIX_NAME','')}}`  `({os.environ.get('RUNNER_OS','')})`")
+          md.append(f"## DSPTOP Profile - {os.environ.get('MATRIX_NAME','')} ({os.environ.get('RUNNER_OS','')})")
           md.append("")
           md.append(f"**Samples:** {len(samples)}  |  **Max Thermal Throttle:** {throttle_max:.1f}%  |  **Max Util:** {summary.get('max_util','?')}")
           md.append("")
-          md.append("| Device | Cores | Avg Util % | Peak Util % | SRAM % | VMEM % | Power (W) | Envelope % | Temp °C | Throttle % |")
+          md.append("| Device | Cores | Avg Util % | Peak Util % | SRAM % | VMEM % | Power (W) | Envelope % | Temp C | Throttle % |")
           md.append("|--------|-------|------------|-------------|--------|--------|-----------|------------|---------|------------|")
           for dev_name, dev_samples in stats.items():
               cores = len(dev_samples[0].get("cores",[])) if dev_samples else 0
@@ -158,25 +151,20 @@ jobs:
               thr = max(d.get("thermal_throttle_pct",0) for d in dev_samples) if dev_samples else 0
               md.append(f"| {dev_name} | {cores} | {avg_u:.1f} | {peak_u:.1f} | {sram:.1f} | {vmem:.1f} | {pw:.1f} | {env:.1f} | {tmp:.0f} | {thr:.1f} |")
               for c in dev_samples[-1].get("cores",[]):
-                  md.append(f"| ↳ {c.get('name','core')} | 1 | {c.get('util',0):.1f} | {c.get('util',0):.1f} | — | — | — | — | — | — |")
-
+                  md.append(f"| {c.get('name','core')} | 1 | {c.get('util',0):.1f} | {c.get('util',0):.1f} | - | - | - | - | - | - |")
           md.append("")
-          md.append("<details><summary>Raw <code>profile.json</code> (first sample)</summary>")
+          md.append("<details><summary>Raw profile.json (first sample)</summary>")
           md.append("")
           md.append("```json")
           md.append(json.dumps(samples[0], indent=2)[:4000])
           md.append("```")
           md.append("</details>")
-
           out = "\n".join(md)
           print(out)
-          # Append to GitHub Step Summary
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
               with open(summary_path, "a", encoding="utf-8") as f:
                   f.write(out + "\n")
-
-          # Also set throttle for next step
           with open(os.environ.get("GITHUB_ENV","/tmp/env"), "a") as f:
               f.write(f"MAX_THROTTLE={throttle_max}\n")
           PY
@@ -196,10 +184,10 @@ jobs:
           THROTTLE=$(python3 -c "import json,pathlib; d=json.loads(pathlib.Path('profile.json').read_text()); print(d.get('summary',{}).get('max_throttle', max((dev.get('thermal_throttle_pct',0) for s in d.get('samples',[d]) for dev in s.get('devices',[])), default=0))")
           echo "Max thermal throttle: $THROTTLE%"
           python3 -c "import sys; t=float(sys.argv[1]); sys.exit(1 if t>20 else 0)" "$THROTTLE" || {
-            echo "::error::Thermal throttling $THROTTLE% exceeds 20% threshold — failing build"
+            echo "::error::Thermal throttling $THROTTLE% exceeds 20% threshold - failing build"
             exit 1
           }
-          echo "Thermal OK ($THROTTLE% ≤ 20%)"
+          echo "Thermal OK ($THROTTLE% <= 20%)"
 
       - name: Upload profile artifact
         uses: actions/upload-artifact@v4
