@@ -10,7 +10,8 @@ on:
 jobs:
   build-and-profile:
     name: ${{ matrix.name }} (${{ matrix.os }} / ${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
+    # windows-11-arm is in limited preview; fallback to windows-latest for scheduling
+    runs-on: ${{ matrix.os == 'windows-11-arm' && 'windows-latest' || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
