@@ -8,3 +8,8 @@ profile.json
 .vs/
 .idea/
 compile_commands.json
+models/*.gguf
+models/*.bin
+models/openvino-*/
+*.onnx
+*.blob

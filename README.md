@@ -367,6 +367,44 @@ Build is `Ninja`-first (`-G Ninja` in workflow) with fallback to default generat
 
 ---
 
+## Real 8B Q4_K_M Inference on Actual NPU Hardware
+
+`dummy_inference.py` is for CI (mock HAL, no model download). On a real NPU rig, run a **real 8B Q4_K_M**:
+
+```bash
+# auto-detect NPU (Intel NPU / Snapdragon HTP / Apple ANE) and run 60s
+pip install -r scripts/requirements-real.txt
+python scripts/infer_q4km.py --duration 60s
+
+# force a backend
+python scripts/infer_q4km.py --backend openvino --model ./models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf   # Intel NPU
+python scripts/infer_q4km.py --backend mlx                                                               # Apple ANE (mlx 4-bit)
+python scripts/infer_q4km.py --backend qnn --model ./models/...                                         # Snapdragon HTP
+python scripts/infer_q4km.py --backend llama_cpp --model ./models/...                                   # generic fallback
+
+# via dummy wrapper (passes through)
+python scripts/dummy_inference.py --real --duration 60
+
+# correlate with dsptop while it runs
+./build/dsptop --ci --duration 60s --output profile.json &
+python scripts/infer_q4km.py --duration 60s --n-predict 128
+cat profile.json | python -m json.tool | head -n 80
+# dsptop will show Intel NPU / HTP / ANE at 60-85% (yellow) → >85% (red) when dispatched
+```
+
+**What it does per platform (`scripts/infer_q4km.py:1`):**
+
+| NPU | Backend probed first | Model | Runtime | True NPU % in dsptop |
+|-----|----------------------|-------|---------|----------------------|
+| **Intel NPU** (Meteor/Arrow/Lunar) | `openvino` | `Meta-Llama-3.1-8B-Q4_K_M.gguf` → auto-converted to `models/openvino-8B-Q4/` INT4 IR via `optimum-cli export openvino --weight-format int4` | `openvino_genai.LLMPipeline(model, "NPU")` (never GPU) | `PDH \NPU Engine(*)\Utilization` rises |
+| **Qualcomm HTP** | `qnn` | GGUF → QNN/ONNX via `qnn-onnx-converter` (or synthetic HTP burn if not converted) | `onnxruntime` `QNNExecutionProvider` | `Hexagon DSP` cores busy |
+| **Apple ANE** | `mlx` | `mlx-community/Meta-Llama-3.1-8B-Instruct-4bit` (MLX Q4, ANE-transparent) | `mlx_lm.load` / `generate` | `powermetrics --samplers ane_power` residency rises |
+| **Generic/CI** | `llama_cpp` | same `Q4_K_M.gguf` | `llama_cpp.Llama(n_gpu_layers=0)` | Mock HAL (dummy, no throttle) |
+
+Model download is cached to `./models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf` (~4.9 GB) via `huggingface_hub` with `HF_HUB_ENABLE_HF_TRANSFER=1` (10× faster) and resumed. Pass `--download-only` to prefetch or `--model` to use a local path. No `torch.cuda` / `cupy` / `vulkan` imports — 0-GPU preserved.
+
+Requirements are split per NPU (`scripts/requirements-real.txt:1`): `llama-cpp-python` (universal), `mlx-lm` (Darwin), `openvino`+`openvino-genai`+`optimum[openvino]` (Windows/Linux Intel), `onnxruntime-qnn` (Windows ARM64 Snapdragon). Only install what you need.
+
 ## Project Layout
 
 ```
@@ -387,7 +425,11 @@ DSPTOP/
 │   ├── tui/tui.cpp              // Terminal + RenderFrame + Dashboard
 │   ├── ci/ci_mode.cpp           // headless JSON + history
 │   └── daemon/daemon.cpp        // poll + Prometheus + UDS/NamedPipe
-├── scripts/dummy_inference.py   // CI load generator
+├── scripts/
+│   ├── dummy_inference.py   // CI load generator (supports --real passthrough)
+│   ├── infer_q4km.py        // real 8B Q4_K_M on NPU (Intel/HTP/ANE/llama_cpp)
+│   └── requirements-real.txt
+├── models/                  // cached GGUF / OpenVINO IR (gitignored *.gguf)
 └── .github/workflows/dsptop-ci.yml  // 4-platform matrix (206 lines)
 ```
 

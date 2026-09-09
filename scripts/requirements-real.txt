@@ -1,0 +1,29 @@
+# DSPTOP — real 8B Q4_K_M inference requirements
+# Install only what you need for your NPU:
+#   Intel NPU:  pip install -r requirements-real.txt --extra-index-url ...
+#   Apple ANE:  pip install mlx-lm
+#   Generic:    pip install llama-cpp-python
+
+# Universal (always needed for downloader + fallback)
+huggingface_hub>=0.25
+hf_transfer>=0.1.8
+numpy
+
+# Generic fallback — 8B Q4_K_M GGUF on CPU (works everywhere, CI-friendly)
+# On Linux ARM64 you need a prebuilt wheel or build from source:
+llama-cpp-python>=0.2.80; sys_platform != "darwin" or platform_machine != "arm64"
+
+# Apple Silicon ANE — 4-bit via MLX (ane path, 8B ~ 4 GB)
+mlx-lm>=0.16.0; sys_platform == "darwin"
+
+# Intel NPU — OpenVINO GenAI + optimum export (true NPU dispatch, 0-GPU)
+openvino>=2024.6.0; sys_platform == "win32" or sys_platform == "linux"
+openvino-genai>=2024.6.0; sys_platform == "win32" or sys_platform == "linux"
+optimum[openvino]>=1.20; sys_platform == "win32" or sys_platform == "linux"
+
+# Qualcomm Snapdragon X Elite HTP — QNN EP for onnxruntime
+onnxruntime-qnn>=1.19; sys_platform == "win32" and platform_machine == "ARM64"
+onnxruntime>=1.19  # fallback for detection
+
+# Optional: faster HF downloads
+# hf_transfer is already above; enable with HF_HUB_ENABLE_HF_TRANSFER=1
