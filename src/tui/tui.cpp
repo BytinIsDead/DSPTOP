@@ -79,8 +79,8 @@ bool Terminal::Init() {
     if (!is_tty_) return false;
     // Save termios
     orig_termios_ = new ::termios;
-    tcgetattr(STDIN_FILENO, orig_termios_);
-    ::termios raw = *orig_termios_;
+    tcgetattr(STDIN_FILENO, static_cast<struct termios*>(orig_termios_));
+    ::termios raw = *static_cast<struct termios*>(orig_termios_);
     raw.c_lflag &= ~(ECHO | ICANON);
     tcsetattr(STDIN_FILENO, TCSANOW, &raw);
     // Alt buffer + hide cursor
@@ -102,8 +102,8 @@ void Terminal::Shutdown() {
     }
 #else
     if (orig_termios_) {
-        tcsetattr(STDIN_FILENO, TCSANOW, orig_termios_);
-        delete orig_termios_; orig_termios_=nullptr;
+        tcsetattr(STDIN_FILENO, TCSANOW, static_cast<struct termios*>(orig_termios_));
+        delete static_cast<struct termios*>(orig_termios_); orig_termios_=nullptr;
     }
     if (alt_buffer_active_) {
         std::cout << "\x1b[?1049l\x1b[?25h" << std::flush;

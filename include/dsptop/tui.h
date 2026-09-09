@@ -52,7 +52,7 @@ private:
     unsigned long origOutMode_ = 0;
     unsigned long origInMode_ = 0;
 #else
-    struct ::termios* orig_termios_ = nullptr;
+    void* orig_termios_ = nullptr;
     bool alt_buffer_active_ = false;
 #endif
 };

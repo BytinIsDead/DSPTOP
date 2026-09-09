@@ -72,7 +72,11 @@ jobs:
       - name: Configure (CMake)
         shell: bash
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} || cmake -B build -DCMAKE_BUILD_TYPE=Release
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release || cmake -B build -DCMAKE_BUILD_TYPE=Release
+          else
+            cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} || cmake -B build -DCMAKE_BUILD_TYPE=Release
+          fi
 
       - name: Build DSPTOP natively
         run: |
